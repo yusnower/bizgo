@@ -1,4 +1,4 @@
-package errors
+package bizerr
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+
+	"github.com/yusnower/gobiz/bizreflect"
 )
 
 var logger defaultLogger
@@ -151,4 +153,8 @@ func InitModule(prefix string, obj interface{}) {
 			}
 		}
 	}
+}
+
+func InitModuleG[T any]() *T {
+	return bizreflect.InitStructG[T]()
 }
