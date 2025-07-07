@@ -7,7 +7,7 @@ import (
 	"log"
 	"reflect"
 
-	"github.com/yusnower/gobiz/bizreflect"
+	"github.com/yusnower/bizgo/bizreflect"
 )
 
 var logger defaultLogger

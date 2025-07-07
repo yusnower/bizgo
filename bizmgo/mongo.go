@@ -7,9 +7,9 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 
-	"github.com/yusnower/gobiz/bizdb"
-	"github.com/yusnower/gobiz/bizerr"
-	"github.com/yusnower/gobiz/bizresult"
+	"github.com/yusnower/bizgo/bizdb"
+	"github.com/yusnower/bizgo/bizerr"
+	"github.com/yusnower/bizgo/bizresult"
 )
 
 var MongoErr = bizerr.InitModuleG[struct {
@@ -18,16 +18,18 @@ var MongoErr = bizerr.InitModuleG[struct {
 }]()
 
 // NewCollection creates a new generic collection
-func NewCollection[T any](coll *mongo.Collection) *Collection[T] {
+func NewCollection[T any](db *mongo.Database, collection string) *Collection[T] {
 	return &Collection[T]{
-		coll: coll,
+		db:   db,
+		coll: collection,
 		ctx:  context.Background(),
 	}
 }
 
 // Collection is a generic type collection wrapper
 type Collection[T any] struct {
-	coll *mongo.Collection
+	db   *mongo.Database
+	coll string
 	ctx  context.Context
 }
 
@@ -44,12 +46,12 @@ func (r *Collection[T]) WithCtx(ctx context.Context) *Collection[T] {
 func (r *Collection[T]) Create(obj T) *bizresult.Result[struct{}] {
 	res := bizresult.New[struct{}]()
 
-	_, err := r.coll.InsertOne(r.ctx, obj)
+	_, err := r.getCollection().InsertOne(r.ctx, obj)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, obj))
+		return res.Err(MongoErr.Err.Wrap(err, obj))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // CreateMany inserts multiple documents
@@ -57,7 +59,7 @@ func (r *Collection[T]) CreateMany(objs []T) *bizresult.Result[struct{}] {
 	res := bizresult.New[struct{}]()
 
 	if len(objs) == 0 {
-		return res.SetValue(struct{}{})
+		return res.Ok(struct{}{})
 	}
 
 	docs := make([]interface{}, len(objs))
@@ -65,12 +67,12 @@ func (r *Collection[T]) CreateMany(objs []T) *bizresult.Result[struct{}] {
 		docs[i] = obj
 	}
 
-	_, err := r.coll.InsertMany(r.ctx, docs)
+	_, err := r.getCollection().InsertMany(r.ctx, docs)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, objs))
+		return res.Err(MongoErr.Err.Wrap(err, objs))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // Get retrieves a single document by ID
@@ -79,16 +81,16 @@ func (r *Collection[T]) Get(id interface{}) *bizresult.Result[T] {
 
 	var result T
 
-	err := r.coll.FindOne(r.ctx, bson.M{"_id": id}).Decode(&result)
+	err := r.getCollection().FindOne(r.ctx, bson.M{"_id": id}).Decode(&result)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return res.SetErr(MongoErr.NotFound.Wrap(err, id))
+			return res.Err(MongoErr.NotFound.Wrap(err, id))
 		}
 
-		return res.SetErr(MongoErr.Err.Wrap(err, id))
+		return res.Err(MongoErr.Err.Wrap(err, id))
 	}
 
-	return res.SetValue(result)
+	return res.Ok(result)
 }
 
 // FindOne retrieves a single document based on filter conditions
@@ -98,15 +100,15 @@ func (r *Collection[T]) FindOne(filter *bizdb.BoxFilter) *bizresult.Result[T] {
 	var result T
 	filterDoc := bizdb.FilterToMongo(filter)
 
-	err := r.coll.FindOne(r.ctx, filterDoc).Decode(&result)
+	err := r.getCollection().FindOne(r.ctx, filterDoc).Decode(&result)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return res.SetErr(MongoErr.NotFound.Wrap(err, filterDoc))
+			return res.Err(MongoErr.NotFound.Wrap(err, filterDoc))
 		}
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(result)
+	return res.Ok(result)
 }
 
 // FindOneAndExist retrieves a single document based on filter conditions and returns whether it exists
@@ -116,19 +118,19 @@ func (r *Collection[T]) FindOneAndExist(filter *bizdb.BoxFilter) *bizresult.Resu
 	var result T
 	filterDoc := bizdb.FilterToMongo(filter)
 
-	err := r.coll.FindOne(r.ctx, filterDoc).Decode(&result)
+	err := r.getCollection().FindOne(r.ctx, filterDoc).Decode(&result)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return res.SetValue(bizresult.WithExist[T]{
+			return res.Ok(bizresult.WithExist[T]{
 				Data:   result,
 				Exists: false,
 			})
 		}
 
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(bizresult.WithExist[T]{
+	return res.Ok(bizresult.WithExist[T]{
 		Data:   result,
 		Exists: true,
 	})
@@ -145,12 +147,12 @@ func (r *Collection[T]) Count(filter *bizdb.BoxFilter) *bizresult.Result[int64] 
 
 	filterDoc := bizdb.FilterToMongo(filter)
 
-	count, err := r.coll.CountDocuments(r.ctx, filterDoc)
+	count, err := r.getCollection().CountDocuments(r.ctx, filterDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(count)
+	return res.Ok(count)
 }
 
 // Update updates a single document by ID
@@ -160,12 +162,12 @@ func (r *Collection[T]) Update(id interface{}, update *bizdb.BoxUpdate) *bizresu
 	filterDoc := bson.M{"_id": id}
 	updateDoc := bizdb.UpdateToMongo(update)
 
-	_, err := r.coll.UpdateOne(r.ctx, filterDoc, updateDoc)
+	_, err := r.getCollection().UpdateOne(r.ctx, filterDoc, updateDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, id, updateDoc))
+		return res.Err(MongoErr.Err.Wrap(err, id, updateDoc))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // UpdateOne updates a single document
@@ -175,12 +177,12 @@ func (r *Collection[T]) UpdateOne(filter *bizdb.BoxFilter, update *bizdb.BoxUpda
 	filterDoc := bizdb.FilterToMongo(filter)
 	updateDoc := bizdb.UpdateToMongo(update)
 
-	_, err := r.coll.UpdateOne(r.ctx, filterDoc, updateDoc)
+	_, err := r.getCollection().UpdateOne(r.ctx, filterDoc, updateDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc, updateDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc, updateDoc))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // UpdateMany updates multiple documents
@@ -190,12 +192,12 @@ func (r *Collection[T]) UpdateMany(filter *bizdb.BoxFilter, update *bizdb.BoxUpd
 	filterDoc := bizdb.FilterToMongo(filter)
 	updateDoc := bizdb.UpdateToMongo(update)
 
-	_, err := r.coll.UpdateMany(r.ctx, filterDoc, updateDoc)
+	_, err := r.getCollection().UpdateMany(r.ctx, filterDoc, updateDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc, updateDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc, updateDoc))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // Delete deletes a single document by ID
@@ -204,12 +206,12 @@ func (r *Collection[T]) Delete(id interface{}) *bizresult.Result[struct{}] {
 
 	filter := bson.M{"_id": id}
 
-	_, err := r.coll.DeleteOne(r.ctx, filter)
+	_, err := r.getCollection().DeleteOne(r.ctx, filter)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, id))
+		return res.Err(MongoErr.Err.Wrap(err, id))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // DeleteOne deletes a single document
@@ -218,12 +220,12 @@ func (r *Collection[T]) DeleteOne(filter *bizdb.BoxFilter) *bizresult.Result[str
 
 	filterDoc := bizdb.FilterToMongo(filter)
 
-	_, err := r.coll.DeleteOne(r.ctx, filterDoc)
+	_, err := r.getCollection().DeleteOne(r.ctx, filterDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // DeleteMany deletes multiple document
@@ -232,28 +234,85 @@ func (r *Collection[T]) DeleteMany(filter *bizdb.BoxFilter) *bizresult.Result[st
 
 	filterDoc := bizdb.FilterToMongo(filter)
 
-	_, err := r.coll.DeleteMany(r.ctx, filterDoc)
+	_, err := r.getCollection().DeleteMany(r.ctx, filterDoc)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
 }
 
 // Aggregate executes an aggregation operation
 func (r *Collection[T]) Aggregate(pipeline interface{}, results interface{}) *bizresult.Result[struct{}] {
 	res := bizresult.New[struct{}]()
 
-	cursor, err := r.coll.Aggregate(r.ctx, pipeline)
+	cursor, err := r.getCollection().Aggregate(r.ctx, pipeline)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, pipeline))
+		return res.Err(MongoErr.Err.Wrap(err, pipeline))
 	}
 	defer cursor.Close(r.ctx)
 
 	err = cursor.All(r.ctx, results)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, pipeline))
+		return res.Err(MongoErr.Err.Wrap(err, pipeline))
 	}
 
-	return res.SetValue(struct{}{})
+	return res.Ok(struct{}{})
+}
+
+func (r *Collection[T]) getCollection() *mongo.Collection {
+	return r.db.Collection(r.coll)
+}
+
+func (r *Collection[T]) Raw(fn func(ctx context.Context, coll *mongo.Collection) error) *bizresult.Result[struct{}] {
+	res := bizresult.New[struct{}]()
+
+	err := fn(r.ctx, r.getCollection())
+	if err != nil {
+		return res.Err(MongoErr.Err.Wrap(err, r.coll))
+	}
+
+	return res.Ok(struct{}{})
+}
+
+func (r *Collection[T]) FindAndUpdate(filter *bizdb.BoxFilter, update *bizdb.BoxUpdate) *bizresult.Result[T] {
+	res := bizresult.New[T]()
+
+	filterDoc := bizdb.FilterToMongo(filter)
+	updateDoc := bizdb.UpdateToMongo(update)
+
+	var result T
+	if err := r.getCollection().FindOneAndUpdate(r.ctx, filterDoc, updateDoc).Decode(&result); err != nil {
+		res.Err(err)
+	}
+
+	return res.Ok(result)
+}
+
+func (r *Collection[T]) Upsert(filter *bizdb.BoxFilter, update *bizdb.BoxUpdate, newObj T) *bizresult.Result[struct{}] {
+	res := bizresult.New[struct{}]()
+
+	filterDoc := bizdb.FilterToMongo(filter)
+	updateDoc := bizdb.UpdateToMongo(update)
+
+	err := r.getCollection().FindOne(r.ctx, filterDoc).Err()
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			_, err = r.getCollection().InsertOne(r.ctx, newObj)
+			if err != nil {
+				return res.Err(err)
+			}
+		} else {
+			return res.Err(err)
+		}
+	}
+
+	if len(updateDoc) > 0 {
+		_, err = r.getCollection().UpdateOne(r.ctx, filterDoc, updateDoc)
+		if err != nil {
+			return res.Err(err)
+		}
+	}
+
+	return res.Ok(struct{}{})
 }

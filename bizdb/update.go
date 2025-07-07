@@ -3,7 +3,7 @@ package bizdb
 import (
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/yusnower/gobiz/bizreflect"
+	"github.com/yusnower/bizgo/bizreflect"
 )
 
 // Define update operators using a struct with biz tags

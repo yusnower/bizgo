@@ -3,8 +3,8 @@ package bizmgo
 import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 
-	"github.com/yusnower/gobiz/bizdb"
-	"github.com/yusnower/gobiz/bizresult"
+	"github.com/yusnower/bizgo/bizdb"
+	"github.com/yusnower/bizgo/bizresult"
 )
 
 // FindOptions represents the options for the FindMany operation
@@ -12,15 +12,22 @@ type FindOptions[T any] struct {
 	collection *Collection[T]
 	filter     *bizdb.BoxFilter
 	opts       *options.FindOptions
+	*bizresult.Result[[]T]
 }
 
 // NewFindOptions creates a new FindOptions instance
 func NewFindOptions[T any](collection *Collection[T], filter *bizdb.BoxFilter) *FindOptions[T] {
-	return &FindOptions[T]{
+
+	val := &FindOptions[T]{
 		collection: collection,
 		filter:     filter,
 		opts:       options.Find(),
 	}
+	innerResult := bizresult.New[[]T]()
+	innerResult.Delay(val.execute)
+	val.Result = innerResult
+
+	return val
 }
 
 // SetLimit sets the maximum number of documents to return
@@ -54,22 +61,22 @@ func (f *FindOptions[T]) SetHint(hint interface{}) *FindOptions[T] {
 }
 
 // Execute executes the find operation with the configured options
-func (f *FindOptions[T]) Execute() *bizresult.Result[[]T] {
-	res := bizresult.New[[]T]()
+func (f *FindOptions[T]) execute() *bizresult.Result[[]T] {
+	res := f.Result
 
 	var results []T
 	filterDoc := bizdb.FilterToMongo(f.filter)
 
-	cursor, err := f.collection.coll.Find(f.collection.ctx, filterDoc, f.opts)
+	cursor, err := f.collection.getCollection().Find(f.collection.ctx, filterDoc, f.opts)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 	defer cursor.Close(f.collection.ctx)
 
 	err = cursor.All(f.collection.ctx, &results)
 	if err != nil {
-		return res.SetErr(MongoErr.Err.Wrap(err, filterDoc))
+		return res.Err(MongoErr.Err.Wrap(err, filterDoc))
 	}
 
-	return res.SetValue(results)
+	return res.Ok(results)
 }

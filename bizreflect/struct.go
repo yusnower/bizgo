@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	tagValue = "biz"
+	tagValue  = "biz"
+	prefixTag = "prefix" // New constant for the prefix tag
 )
 
 func InitStructG[T any]() *T {
@@ -33,11 +34,14 @@ func InitStruct(obj interface{}) error {
 
 	val := reflect.ValueOf(obj).Elem()
 
-	return initValue(val)
+	return initValue(val, "")
 }
 
-func initValue(val reflect.Value) error {
+func initValue(val reflect.Value, parentPrefix string) error {
 	typ := val.Type()
+	// Check if struct has a prefix tag
+	prefix := parentPrefix
+
 	for i := 0; i < val.NumField(); i++ {
 		field := val.Field(i)
 		fieldType := typ.Field(i)
@@ -46,21 +50,38 @@ func initValue(val reflect.Value) error {
 			continue
 		}
 
-		if err := setFieldValue(field, fieldType); err != nil {
+		// Get the prefix from the current struct if it exists
+		if fieldType.Name == prefixTag {
+			if field.Kind() == reflect.String && field.String() != "" {
+				prefix = field.String()
+			}
+		}
+
+		if err := setFieldValue(field, fieldType, prefix); err != nil {
 			return fmt.Errorf("failed to set field %s: %w", fieldType.Name, err)
 		}
 	}
 	return nil
 }
 
-func setFieldValue(field reflect.Value, fieldType reflect.StructField) error {
+func setFieldValue(field reflect.Value, fieldType reflect.StructField, prefix string) error {
+	// Check if this field itself has a prefix tag that overrides the struct prefix
+	fieldPrefix := prefix
+	if prefixValue := fieldType.Tag.Get(prefixTag); prefixValue != "" {
+		fieldPrefix = prefixValue
+	}
+
 	switch fieldType.Type.Kind() {
 	case reflect.Struct:
-		return handleStructField(field, fieldType)
+		return handleStructField(field, fieldType, fieldPrefix)
 	case reflect.Map:
 		return handleMapField(field)
 	case reflect.String:
 		value := fieldType.Tag.Get(tagValue)
+		// Apply prefix to string fields if prefix exists and value is not empty
+		if fieldPrefix != "" && value != "" {
+			value = fieldPrefix + value
+		}
 		field.SetString(value)
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		value := fieldType.Tag.Get(tagValue)
@@ -81,10 +102,10 @@ func setFieldValue(field reflect.Value, fieldType reflect.StructField) error {
 	return nil
 }
 
-func handleStructField(field reflect.Value, fieldType reflect.StructField) error {
+func handleStructField(field reflect.Value, fieldType reflect.StructField, prefix string) error {
 	fieldValue := reflect.New(fieldType.Type).Elem()
 
-	if err := initValue(fieldValue); err != nil {
+	if err := initValue(fieldValue, prefix); err != nil {
 		return err
 	}
 
@@ -103,6 +124,10 @@ func handleStructField(field reflect.Value, fieldType reflect.StructField) error
 
 		parentTagValue := fieldType.Tag.Get(innerFieldType.Name)
 		if parentTagValue != "" {
+			// When setting parent-defined values, also apply prefix if it's a string field
+			if innerField.Kind() == reflect.String && prefix != "" {
+				parentTagValue = prefix + parentTagValue
+			}
 			if err := setFieldByType(innerField, parentTagValue); err != nil {
 				return fmt.Errorf("failed to set nested field %s from parent tag: %w", innerFieldType.Name, err)
 			}

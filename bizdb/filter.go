@@ -5,7 +5,7 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 
-	"github.com/yusnower/gobiz/bizreflect"
+	"github.com/yusnower/bizgo/bizreflect"
 )
 
 var operator = bizreflect.InitStructG[struct {
