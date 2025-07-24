@@ -24,6 +24,11 @@ func (r *BizError) Error() string {
 	return r.key
 }
 
+func (r *BizError) Code() string {
+
+	return r.key
+}
+
 func (r *BizError) Format(s fmt.State, verb rune) {
 	switch verb {
 	case 'v':
