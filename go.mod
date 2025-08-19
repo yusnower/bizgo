@@ -3,6 +3,7 @@ module github.com/yusnower/bizgo
 go 1.22.0
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.10.0
 	go.mongodb.org/mongo-driver v1.17.4
 )

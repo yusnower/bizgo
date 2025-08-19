@@ -7,6 +7,8 @@ import (
 	"log"
 	"reflect"
 
+	"github.com/google/uuid"
+
 	"github.com/yusnower/bizgo/bizreflect"
 )
 
@@ -62,18 +64,24 @@ func (r BizCode) Wrap(err error, obj ...interface{}) error {
 		err: err,
 	}
 
+	msgID := "000"
+	newUuid, err := uuid.NewV7()
+	if err == nil {
+		msgID = newUuid.String()
+	}
+
 	var bizErr *BizError
 	if errors.As(err, &bizErr) {
 		newBizErr.stack = bizErr.stack
 		newBizErr.uuid = bizErr.uuid
 	} else {
 		newBizErr.stack = callers()
-		newBizErr.uuid = "123"
+		newBizErr.uuid = msgID
 	}
 
 	logger.PrintBizError(&ErrorInfo{
 		Ctx:   r.ctx,
-		Err:   err,
+		Err:   newBizErr,
 		Value: obj,
 		Uuid:  newBizErr.uuid,
 	})
@@ -87,16 +95,22 @@ func (r BizCode) Wrap(err error, obj ...interface{}) error {
 func (r BizCode) Msg(msg string, obj ...interface{}) error {
 	err := errors.New(msg)
 
+	msgID := "000"
+	newUuid, err := uuid.NewV7()
+	if err == nil {
+		msgID = newUuid.String()
+	}
+
 	newBizErr := &BizError{
 		key:   r.Key,
 		err:   err,
-		uuid:  "123",
+		uuid:  msgID,
 		stack: callers(),
 	}
 
 	logger.PrintBizError(&ErrorInfo{
 		Ctx:   r.ctx,
-		Err:   err,
+		Err:   newBizErr,
 		Value: obj,
 		Uuid:  newBizErr.uuid,
 	})
