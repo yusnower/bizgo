@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
-	"runtime"
 )
 
 // BizError represents a business error with a specific error code key,
@@ -61,21 +59,4 @@ func (r *BizError) Is(target error) bool {
 // This enables compatibility with the errors.Is and errors.As functions.
 func (r *BizError) Unwrap() error {
 	return r.err
-}
-
-// captureLocation returns a formatted string with the caller's location information.
-// The skip parameter determines how many stack frames to skip.
-func captureLocation(skip int) string {
-	pc, file, line, ok := runtime.Caller(skip + 1)
-	if !ok {
-		return ""
-	}
-
-	fn := runtime.FuncForPC(pc)
-	funcName := "unknown"
-	if fn != nil {
-		funcName = filepath.Base(fn.Name())
-	}
-
-	return fmt.Sprintf("%s/%s:%d", filepath.Base(file), funcName, line)
 }

@@ -13,11 +13,10 @@ import (
 var logger defaultLogger
 
 type ErrorInfo struct {
-	Ctx      context.Context `json:"-"`
-	Err      error           `json:"err"`
-	Location string          `json:"location"`
-	Value    interface{}     `json:"value"`
-	Uuid     string          `json:"uuid"`
+	Ctx   context.Context `json:"-"`
+	Err   error           `json:"err"`
+	Value interface{}     `json:"value"`
+	Uuid  string          `json:"uuid"`
 }
 
 type Logger interface {
@@ -27,7 +26,7 @@ type Logger interface {
 type defaultLogger struct{}
 
 func (l *defaultLogger) PrintBizError(obj *ErrorInfo) {
-	log.Println(obj.Uuid, obj.Value, obj.Err)
+	log.Printf("%s, %+v, %+v \n", obj.Uuid, obj.Value, obj.Err)
 }
 
 const (
@@ -73,11 +72,33 @@ func (r BizCode) Wrap(err error, obj ...interface{}) error {
 	}
 
 	logger.PrintBizError(&ErrorInfo{
-		Ctx:      r.ctx,
-		Err:      err,
-		Location: captureLocation(1),
-		Value:    obj,
-		Uuid:     newBizErr.uuid,
+		Ctx:   r.ctx,
+		Err:   err,
+		Value: obj,
+		Uuid:  newBizErr.uuid,
+	})
+
+	return newBizErr
+}
+
+// Msg creates a new BizError with the given message and captures
+// the current code location (file, line, function).
+// This allows attaching a specific error code to any error.
+func (r BizCode) Msg(msg string, obj ...interface{}) error {
+	err := errors.New(msg)
+
+	newBizErr := &BizError{
+		key:   r.Key,
+		err:   err,
+		uuid:  "123",
+		stack: callers(),
+	}
+
+	logger.PrintBizError(&ErrorInfo{
+		Ctx:   r.ctx,
+		Err:   err,
+		Value: obj,
+		Uuid:  newBizErr.uuid,
 	})
 
 	return newBizErr
